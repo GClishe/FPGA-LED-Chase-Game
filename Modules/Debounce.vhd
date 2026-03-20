@@ -12,7 +12,6 @@ generic (
 ); 
 port(
     i_clk : in std_logic;
-    i_rst : in std_logic;
     i_bouncy : in std_logic;
     o_debounced : out std_logic
 );
@@ -29,12 +28,7 @@ process (i_clk) begin
     o_debounced <= r_out_signal;
 
     if rising_edge(i_clk) then
-        if i_rst = '1' then
-                r_counter <= (others => '0');
-                r_out_signal <= '0';
-                r_recent_input_pressed <= '0';
-
-        elsif r_recent_input_pressed = '0' then
+        if r_recent_input_pressed = '0' then
             -- currently waiting for a new press
             if i_bouncy = '1' then
                     r_recent_input_pressed <= '1';
