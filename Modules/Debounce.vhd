@@ -2,9 +2,9 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- Debounce will use a slow clock, generated via a counter or an LFSR, then it will sample the input
--- on this slow clock. If the input is high (while the last state was low), then it will output high
--- for a number of cycles. 
+-- Triggers on first detection of '1' on i_bouncy and starts a counter. Output is de-asserted when counter wraps.
+-- With 21 bit counter on a 100MHz clock, output remains high for approx. 20ms. Additional inputs are rejected in 
+-- this window of time. 
 
 entity Debounce is 
 generic (
