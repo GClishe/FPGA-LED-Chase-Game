@@ -7,7 +7,7 @@ entity Top is
         i_clk : in std_logic;
         i_btnC : in std_logic;
         i_btnT : in std_logic;
-        o_LED1 : out std_logic
+        o_led : out std_logic_vector(15 downto 0)
     );
 end entity Top;
 
@@ -25,6 +25,6 @@ begin
             o_debounced => w_debounced_btnT
         );
     
-    o_LED1 <= w_debounced_btnT;
+    o_LED(0) <= w_debounced_btnT;
 
 end architecture RTL;
