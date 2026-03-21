@@ -5,8 +5,10 @@ use ieee.numeric_std.all;
 entity Game_Loop is 
 port (
     i_clk : in std_logic;
-    i_rst : in std_logic;
-    o_LED_sel: out unsigned(3 downto 0) := (others => '0');         -- LED selector. Asynchronously tied to 4 LSBs of r_LFSR_out
+    i_btnT : in std_logic;                                          -- reset button
+    i_btnC : in std_logic;                                          -- Main player input. Also transitions from START
+    o_target_LED: out unsigned(3 downto 0);                         -- idx of the target LED.
+    o_LED_arr: out std_logic_vector(15 downto 0)                    -- array representing each LED. All 1's indicate corresponding LED should be on. 
 );
 end entity Game_Loop;
 architecture RTL of Game_Loop is
@@ -20,40 +22,91 @@ architecture RTL of Game_Loop is
                        );
 
     signal r_LFSR_seed_ctr : unsigned(15 downto 0) := (others => '0');  -- counter used to seed the LFSR
+    signal r_game_ctr : unsigned(25 downto 0) := (others => '0')        -- 26-bit counter that takes ~0.7s to wrap. This will be used to flash LEDs in start state and also to temporally separate certain state transitions
     signal r_LFSR_out : unsigned(15 downto 0) := (others => '0');       -- intermediate register for taking LFSR output. 
     signal r_seed_dv : std_logic;                                       -- datavalid signal indicating LFSR seed should be loaded
+    signal r_curr_state : t_SM_Main := START;
+    signal r_target_LED_idx: unsigned(3 downto 0) := "0000";            -- index (0 thru 15 of target LED )
+    signal r_LED_arr : std_logic_vector(15 downto 0) := (others => 0);  -- mask representing LEDs that should be on (1) or off (0)
 begin
 
 LFSR : entity work.LFSR_16b
   port map(
   	i_clk => i_clk,
-    i_rst => i_rst,
+    i_rst => i_btnT,
     i_seed_dv => r_seed_dv,
     i_seed_val => r_LFSR_seed_ctr,  
     o_LFSR_val => r_LFSR_out
   );
 
 process (i_clk) begin
+    if rising_edge(i_clk) begin
+        if i_rst begin  -- synchronous reset
+            r_curr_state <= START;
+            r_game_ctr <= (others => '0');
+            o_LED_arr <= (others => '0'); -- all LEDs off upon reset
 
+        else
+            
+        -- state machine logic
+            case r_curr_state is
+                when START => 
+                    r_game_ctr <= r_game_ctr + 1;
+                    if r_game_ctr = 0 then
+                        r_LED_arr <= not r_LED_arr;         -- in START state, flip all LEDs. Want LEDs to cycle on and off every ~0.7s
+                    end if;
+                    if i_btnC = '1' then
+                        r_LED_arr <= (others => '0');
+                        r_game_ctr <= to_unsigned(1,26);    -- when we transition into TARGET_OFF, we remain there for however long it takes for r_game_ctr to wrap. So we reset the counter (to 1) right here
+                        r_seed_dv = '1';                    -- we seed the LFSR with whatever is currenctly in the LFSR_seed_ctr. When we transition to TARGET_OFF, we'll turn off the seed dv (to keep from continusously re-seeding)
+                        r_curr_state <= TARGET_OFF;
+                    else
+                        r_curr_state <= START;
+                    end if;
+                when TARGET_OFF =>
+                    -- in this state, we want to compute the target LED for the next round
+                    r_LED_arr <= (others => '0');   -- make sure all LEDs are off
+                    r_seed_dv <= '0';               -- turn off the seeding. LFSR will continue for many cycles until r_target_LED_idx is determined
+                    r_game_ctr <= r_game_ctr + 1;
+                    if r_game_ctr = 0 then
+                        -- Here, we want to select the target LED
+                        -- The 4 LSBs in the LFSR are highly correlated, so to improve RNG behavior I 
+                        -- xor them with non-adjacent bits that I chose more or less arbitrarily. Then 
+                        -- concatenate them to build 4-bit LED select.
+                        r_target_LED_idx <= (
+                            r_LFSR_out(0) xor r_LFSR_out(5) &
+                            r_LFSR_out(1) xor r_LFSR_out(9) &
+                            r_LFSR_out(2) xor r_LFSR_out(13) &
+                            r_LFSR_out(3) xor r_LFSR_out(7) 
+                        );
 
+                        r_curr_state <= TARGET_ON;                    
+                    end if;
+                when TARGET_ON =>
+                    -- in this state, target LED should light, then we wait for game_ctr to wrap before cycling begins
+                    if (r_target_LED_idx = 0) thenS
+                        r_LED_arr(1) = '1'          -- we dont want LED 0 to be the target LED ever. 
+                    else 
+                        r_LED_arr(r_target_LED_idx) = '1';     
+                    end if;
 
+                    r_game_ctr <= r_game_ctr + 1;
+                    if r_game_ctr = 0 then
+                        r_curr_state <= cycle;                    
+                    end if;
 
-
-
-
-
-
-    
+                when CYCLE =>
+                when INCR_SCORE =>
+                when LOSE =>
+                when WIN =>
+            end case;
+        end if;
+        r_LFSR_seed_ctr <= r_LFSR_seed_ctr + 1; 
+    end if;
 end process
 
--- The 4 LSBs in the LFSR are highly correlated, so to improve RNG behavior I 
--- xor them with non-adjacent bits that I chose more or less arbitrarily. Then 
--- concatenate them to build 4-bit LED select.
-o_LED_sel <= (
-    r_LFSR_out(0) xor r_LFSR_out(5) &
-    r_LFSR_out(1) xor r_LFSR_out(9) &
-    r_LFSR_out(2) xor r_LFSR_out(13) &
-    r_LFSR_out(3) xor r_LFSR_out(7) 
-);
+
+o_target_LED <= r_target_LED_idx;
+o_LED_arr <= r_LED_arr  
 
 end architecture RTL;
