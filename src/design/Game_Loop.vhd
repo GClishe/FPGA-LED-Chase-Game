@@ -44,7 +44,7 @@ debounce_btnC : entity work.Debounce
 generic map (COUNTER_SIZE = 21)
 port map(
     i_clk => i_clk, 
-    i_bouncy => i_btnC,     -- debounced btnT acts as reset
+    i_bouncy => i_btnC,     -- debounced btnC acts as player input
     o_debounced => w_player_input;
 );
 
