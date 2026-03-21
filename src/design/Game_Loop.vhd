@@ -28,6 +28,8 @@ architecture RTL of Game_Loop is
     signal r_curr_state : t_SM_Main := START;
     signal r_target_LED_idx: unsigned(3 downto 0) := "0000";            -- index (0 thru 15 of target LED )
     signal r_LED_arr : std_logic_vector(15 downto 0) := (others => 0);  -- mask representing LEDs that should be on (1) or off (0)
+    signal r_cycle_vector : std_logic_vector(15 downto 0) := (others => 0);    -- similar to above, but this vector is specifically for the cycle LEDs NOT the target LED. This allows us to easily left shift the cycle vector without affecting target LED
+    signal w_player_input : std_logic_vector := '0';                           -- debounced btnC
 begin
     
 debounce_btnT : entity work.Debounce
@@ -36,6 +38,14 @@ port map(
     i_clk => i_clk, 
     i_bouncy => i_btnT,     -- debounced btnT acts as reset
     o_debounced => rst
+);
+
+debounce_btnC : entity work.Debounce
+generic map (COUNTER_SIZE = 21)
+port map(
+    i_clk => i_clk, 
+    i_bouncy => i_btnC,     -- debounced btnT acts as reset
+    o_debounced => w_player_input;
 );
 
 LFSR : entity work.LFSR_16b
@@ -54,6 +64,7 @@ process (i_clk) begin
             r_curr_state <= START;
             r_game_ctr <= (others => '0');
             o_LED_arr <= (others => '0'); -- all LEDs off upon reset
+            r_cycle_vectr <= (others => 0); 
 
         else
             
@@ -81,7 +92,7 @@ process (i_clk) begin
                         -- Here, we want to select the target LED
                         -- The 4 LSBs in the LFSR are highly correlated, so to improve RNG behavior I 
                         -- xor them with non-adjacent bits that I chose more or less arbitrarily. Then 
-                        -- concatenate them to build 4-bit LED select.
+                        -- concatenate them to build 4-bit LED index.
                         r_target_LED_idx <= (
                             r_LFSR_out(0) xor r_LFSR_out(5) &
                             r_LFSR_out(1) xor r_LFSR_out(9) &
@@ -101,11 +112,30 @@ process (i_clk) begin
 
                     r_game_ctr <= r_game_ctr + 1;
                     if r_game_ctr = 0 then
-                        r_curr_state <= cycle;                    
+                        r_curr_state <= CYCLE; 
+                        r_LED_arr = std_logic_vector(to_unsigned(1,16)); -- turning the counter array to 000...001 to light up first LED when we enter CYCLE                   
                     end if;
 
                 when CYCLE =>
+                    -- In this state, the LEDs will continuously cycle right to left, waiting for player input. 
+                    if r_game_ctr = to_unsigned(30000000, r_game_ctr'length) then   -- on a 100MHz clock, it takes 300ms to count up to this value
+                        r_cycle_vector <= r_cycle_vector(14 downto 0) & r_cycle_vector(15); -- this gives a left shift with wraparound behavior
+                    end if;
+
+                    if w_player_input = '1' then
+                        if r_LED_arr = r_cycle_vector then
+                            -- in this scenario, player input was high when the r_LED_arr (which depends on target input) equals the cycle vector. This means the player pressed the button at the right time
+                            r_curr_state <= INCR_SCORE;
+                        else
+                            r_curr_state <= LOSE;
+
+                        end if;
+                    end if;
+                    r_game_ctr <= r_game_ctr + 1;
+
                 when INCR_SCORE =>
+                    -- in this state, we want to increment the player score and either transition to WIN or TARGET_OFF for loading next round. 
+                    -- TODO ensure that r_game_ctr resets (to 1) before we move to TARGET_OFF.
                 when LOSE =>
                 when WIN =>
             end case;
@@ -116,6 +146,6 @@ end process
 
 
 o_target_LED <= r_target_LED_idx;
-o_LED_arr <= r_LED_arr  
+o_LED_arr <= r_LED_arr or r_cycle_arr;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that 
 
 end architecture RTL;
