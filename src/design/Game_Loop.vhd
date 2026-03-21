@@ -39,9 +39,17 @@ LFSR : entity work.LFSR_16b
     o_LFSR_val => r_LFSR_out
   );
 
+debounce_btnT : entity work.Debounce
+generic map (COUNTER_SIZE = 21)
+port map(
+    i_clk => i_clk, 
+    i_bouncy => i_btnT,     -- btnT acts as reset
+    o_debounced => rst
+);
+
 process (i_clk) begin
     if rising_edge(i_clk) begin
-        if i_rst begin  -- synchronous reset
+        if rst begin  -- synchronous reset
             r_curr_state <= START;
             r_game_ctr <= (others => '0');
             o_LED_arr <= (others => '0'); -- all LEDs off upon reset
