@@ -29,23 +29,24 @@ architecture RTL of Game_Loop is
     signal r_target_LED_idx: unsigned(3 downto 0) := "0000";            -- index (0 thru 15 of target LED )
     signal r_LED_arr : std_logic_vector(15 downto 0) := (others => 0);  -- mask representing LEDs that should be on (1) or off (0)
 begin
-
-LFSR : entity work.LFSR_16b
-  port map(
-  	i_clk => i_clk,
-    i_rst => i_btnT,
-    i_seed_dv => r_seed_dv,
-    i_seed_val => r_LFSR_seed_ctr,  
-    o_LFSR_val => r_LFSR_out
-  );
-
+    
 debounce_btnT : entity work.Debounce
 generic map (COUNTER_SIZE = 21)
 port map(
     i_clk => i_clk, 
-    i_bouncy => i_btnT,     -- btnT acts as reset
+    i_bouncy => i_btnT,     -- debounced btnT acts as reset
     o_debounced => rst
 );
+
+LFSR : entity work.LFSR_16b
+port map(
+    i_clk => i_clk,
+    i_rst => rst,
+    i_seed_dv => r_seed_dv,
+    i_seed_val => r_LFSR_seed_ctr,  
+    o_LFSR_val => r_LFSR_out
+);
+
 
 process (i_clk) begin
     if rising_edge(i_clk) begin
