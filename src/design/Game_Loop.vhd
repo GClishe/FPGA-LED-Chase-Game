@@ -3,12 +3,14 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity Game_Loop is 
+generic (WIN_SCORE := integer 5);
 port (
     i_clk : in std_logic;
     i_btnT : in std_logic;                                          -- reset button
     i_btnC : in std_logic;                                          -- Main player input. Also transitions from START
     o_target_LED: out unsigned(3 downto 0);                         -- idx of the target LED.
-    o_LED_arr: out std_logic_vector(15 downto 0)                    -- array representing each LED. All 1's indicate corresponding LED should be on. 
+    o_LED_arr: out std_logic_vector(15 downto 0);                   -- array representing each LED. All 1's indicate corresponding LED should be on. 
+    o_display_val: out std_logic_vector(3 downto 0)                 -- 4-bit code representing decimal value that we wish to show on the 7S display
 );
 end entity Game_Loop;
 architecture RTL of Game_Loop is
@@ -29,7 +31,8 @@ architecture RTL of Game_Loop is
     signal r_target_LED_idx: unsigned(3 downto 0) := "0000";            -- index (0 thru 15 of target LED )
     signal r_LED_arr : std_logic_vector(15 downto 0) := (others => 0);  -- mask representing LEDs that should be on (1) or off (0)
     signal r_cycle_vector : std_logic_vector(15 downto 0) := (others => 0);    -- similar to above, but this vector is specifically for the cycle LEDs NOT the target LED. This allows us to easily left shift the cycle vector without affecting target LED
-    signal w_player_input : std_logic_vector := '0';                           -- debounced btnC
+    signal w_player_input : std_logic := '0';                                  -- debounced btnC
+    signal r_score : std_logic_vector(3 downto 0) := "0000";
 begin
     
 debounce_btnT : entity work.Debounce
@@ -46,7 +49,7 @@ port map(
     i_clk => i_clk, 
     i_bouncy => i_btnC,     -- debounced btnC acts as player input
     o_debounced => w_player_input;
-);
+);   
 
 LFSR : entity work.LFSR_16b
 port map(
@@ -63,11 +66,10 @@ process (i_clk) begin
         if rst begin  -- synchronous reset
             r_curr_state <= START;
             r_game_ctr <= (others => '0');
-            o_LED_arr <= (others => '0'); -- all LEDs off upon reset
+            o_LED_arr <= (others => '0'); 
             r_cycle_vectr <= (others => 0); 
-
-        else
-            
+            r_score <= "0000";
+        else       
         -- state machine logic
             case r_curr_state is
                 when START => 
@@ -135,7 +137,13 @@ process (i_clk) begin
 
                 when INCR_SCORE =>
                     -- in this state, we want to increment the player score and either transition to WIN or TARGET_OFF for loading next round. 
-                    -- TODO ensure that r_game_ctr resets (to 1) before we move to TARGET_OFF.
+                    if r_score = std_logic_vector(WIN_SCORE-1) then
+                        r_curr_state <= WIN;
+                    else 
+                        r_score <= r_score = 1;
+                        r_game_ctr <= to_unsigned(1,16);
+                        r_curr_state <= TARGET_OFF;
+                    end if;
                 when LOSE =>
                 when WIN =>
             end case;
@@ -147,5 +155,6 @@ end process
 
 o_target_LED <= r_target_LED_idx;
 o_LED_arr <= r_LED_arr or r_cycle_arr;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that 
+o_display_val <= r_score;
 
 end architecture RTL;
