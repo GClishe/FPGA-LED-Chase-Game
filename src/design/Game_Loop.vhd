@@ -6,6 +6,7 @@ entity Game_Loop is
 port (
     i_clk : in std_logic;
     i_rst : in std_logic;
+    o_LED_sel: out unsigned(3 downto 0) := (others => '0');         -- LED selector. Asynchronously tied to 4 LSBs of r_LFSR_out
 );
 end entity Game_Loop;
 architecture RTL of Game_Loop is
@@ -19,6 +20,40 @@ architecture RTL of Game_Loop is
                        );
 
     signal r_LFSR_seed_ctr : unsigned(15 downto 0) := (others => '0');  -- counter used to seed the LFSR
+    signal r_LFSR_out : unsigned(15 downto 0) := (others => '0');       -- intermediate register for taking LFSR output. 
+    signal r_seed_dv : std_logic;                                       -- datavalid signal indicating LFSR seed should be loaded
 begin
+
+LFSR : entity work.LFSR_16b
+  port map(
+  	i_clk => i_clk,
+    i_rst => i_rst,
+    i_seed_dv => r_seed_dv,
+    i_seed_val => r_LFSR_seed_ctr,  
+    o_LFSR_val => r_LFSR_out
+  );
+
+process (i_clk) begin
+
+
+
+
+
+
+
+
+
+    
+end process
+
+-- The 4 LSBs in the LFSR are highly correlated, so to improve RNG behavior I 
+-- xor them with non-adjacent bits that I chose more or less arbitrarily. Then 
+-- concatenate them to build 4-bit LED select.
+o_LED_sel <= (
+    r_LFSR_out(0) xor r_LFSR_out(5) &
+    r_LFSR_out(1) xor r_LFSR_out(9) &
+    r_LFSR_out(2) xor r_LFSR_out(13) &
+    r_LFSR_out(3) xor r_LFSR_out(7) 
+);
 
 end architecture RTL;
