@@ -63,7 +63,7 @@ port map(
 
 
 process (i_clk) begin
-    if rising_edge(i_clk) begin
+    if rising_edge(i_clk) then
         if w_rst = '1' then  -- synchronous reset
             r_curr_state <= START;
             r_game_ctr <= (others => '0');
@@ -177,7 +177,7 @@ process (i_clk) begin
                         r_curr_state <= START;
                         r_game_ctr <= (others => '0');
                     else
-                        if r_game_ctr = to_unsigned(30000000, r_game_ctr'length)    -- decrements counter by 1 every 300ms
+                        if r_game_ctr = to_unsigned(30000000, r_game_ctr'length)  then  -- decrements counter by 1 every 300ms
                             r_score <= r_score - 1;
                             r_game_ctr <= (others => '0');
                         else 
@@ -201,7 +201,7 @@ process (i_clk) begin
         end if;
         r_LFSR_seed_ctr <= r_LFSR_seed_ctr + 1; 
     end if;
-end process
+end process;
 
 o_LED_arr <= r_LED_arr or r_cycle_vectorRL or r_cycle_vectorLR;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that all required lights are on
 o_display_val <= std_logic_vector(r_score);                       -- casting to std_logic_vector, since that is what the input to the Binary_to_7Segment module accepts       
