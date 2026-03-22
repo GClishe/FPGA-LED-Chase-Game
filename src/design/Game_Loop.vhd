@@ -26,10 +26,10 @@ architecture RTL of Game_Loop is
     signal r_LFSR_seed_ctr : unsigned(15 downto 0) := (others => '0');  -- counter used to seed the LFSR
     signal r_game_ctr : unsigned(25 downto 0) := (others => '0');        -- 26-bit counter that takes ~0.7s to wrap. This will be used to flash LEDs in start state and also to temporally separate certain state transitions
     signal r_LFSR_out : unsigned(15 downto 0) := (others => '0');       -- intermediate register for taking LFSR output. 
-    signal r_seed_dv : std_logic;                                       -- datavalid signal indicating LFSR seed should be loaded
+    signal r_seed_dv : std_logic := '0';                                       -- datavalid signal indicating LFSR seed should be loaded
     signal r_curr_state : t_SM_Main := START;
     signal r_target_LED_idx: unsigned(3 downto 0) := "0000";            -- index (0 thru 15 of target LED )
-    signal r_LED_arr : std_logic_vector(15 downto 0) := (others => '0');  -- mask representing LEDs that should be on (1) or off (0)
+    signal r_LED_arr : std_logic_vector(15 downto 0) := (others => '0');  -- vector that holds the target LED
     signal r_cycle_vectorRL : std_logic_vector(15 downto 0) := (others => '0');  -- similar to above, but this vector is specifically for the cycle LEDs NOT the target LED. This allows us to easily left shift the cycle vector without affecting target LED\]
     signal r_cycle_vectorLR : std_logic_vector(15 downto 0) := (others => '0');  -- vector that results in LEDs cycling left to right. Only used in WIN state
     signal w_player_input : std_logic := '0';                                  -- debounced btnC
@@ -46,7 +46,7 @@ port map(
 );
 
 debounce_btnC : entity work.Debounce
-generic map (COUNTER_SIZE = 21)
+generic map (COUNTER_SIZE => 21)
 port map(
     i_clk => i_clk, 
     i_bouncy => i_btnC,     -- debounced btnC acts as player input
@@ -65,13 +65,15 @@ port map(
 
 process (i_clk) begin
     if rising_edge(i_clk) begin
-        if w_rst begin  -- synchronous reset
+        if w_rst = '1' then  -- synchronous reset
             r_curr_state <= START;
             r_game_ctr <= (others => '0');
-            o_LED_arr <= (others => '0'); 
-            r_cycle_vectorRL <= (others => 0); 
-            r_cycle_vectorLR <= (others => 0); 
+            r_LED_arr <= (others => '0'); 
+            r_cycle_vectorRL <= (others => '0'); 
+            r_cycle_vectorLR <= (others => '0'); 
             r_score <= "0000";
+            r_seed_dv <= '0';
+            r_target_LED_idx <= (others => '0');
         else       
         -- state machine logic
             case r_curr_state is
@@ -109,8 +111,9 @@ process (i_clk) begin
                     end if;
                 when TARGET_ON =>
                     -- in this state, target LED should light, then we wait for game_ctr to wrap before cycling begins
+                    r_LED_arr <= (others => '0');
                     if r_target_LED_idx = to_unsigned(0, r_target_LED_idx'length) then
-                        r_LED_arr(1) <= '1'          -- we dont want LED 0 to be the target LED ever. 
+                        r_LED_arr(1) <= '1';          -- we dont want LED 0 to be the target LED ever. 
                     else 
                         r_LED_arr(to_integer(r_target_LED_idx)) <= '1';     
                     end if;
@@ -118,35 +121,44 @@ process (i_clk) begin
                     r_game_ctr <= r_game_ctr + 1;
                     if r_game_ctr = 0 then
                         r_curr_state <= CYCLE; 
-                        r_LED_arr <= std_logic_vector(to_unsigned(1,16)); -- turning the counter array to 000...001 to light up first LED when we enter CYCLE                   
+                        r_cycle_vectorRL <= std_logic_vector(to_unsigned(1,16)); -- turning the counter array to 000...001 to light up first LED when we enter CYCLE                   
                     end if;
 
                 when CYCLE =>
                     -- In this state, the LEDs will continuously cycle right to left, waiting for player input. 
-                    if r_game_ctr = to_unsigned(30000000, r_game_ctr'length) then   -- on a 100MHz clock, it takes 300ms to count up to this value
-                        r_cycle_vectorRL <= r_cycle_vectorRL(14 downto 0) & r_cycle_vectorRL(15); -- this gives a left shift with wraparound behavior
-                    end if;
-
-                    
                     if w_player_input = '1' then
                         -- after player presses the input, all LEDs need to turn off
-                        r_cycle_vectorRL <= (others => '0');
+                        r_cycle_vectorRL <= (others => '0');    -- cycling LEDs
+                        r_LED_arr <= (others => '0');           -- target LED
+
                         if r_target_LED_idx = to_unsigned(0, r_target_LED_idx'length) then
-                            r_LED_arr(1) = '0'     
-                        else 
-                            r_LED_arr(r_target_LED_idx) <= '0';     
+                            -- when r_target_LED_idx is 0, then target has been moved to idx=1, according to last state
+                            if r_cycle_vectorRL(1) = '1' then
+                                -- in this scenario, player input was high when the cycle LED matched the target LED. This means the player pressed the button at the right time
+                                r_curr_state <= INCR_SCORE;
+                            else
+                                r_curr_state <= LOSE;
+                            end if;
+                        else
+                            if r_cycle_vectorRL(to_integer(r_target_LED_idx)) = '1' then
+                                -- in this scenario, player input was high when the cycle LED matched the target LED. This means the player pressed the button at the right time
+                                r_curr_state <= INCR_SCORE;
+                            else
+                                r_curr_state <= LOSE;
+                            end if;
                         end if;
 
-                        if r_LED_arr = r_cycle_vectorRL then
-                            -- in this scenario, player input was high when the r_LED_arr (which depends on target input) equals the cycle vector. This means the player pressed the button at the right time
-                            r_curr_state <= INCR_SCORE;
-                        else
-                            r_curr_state <= LOSE;
-                            r_game_ctr <= to_unsigned(1,16);
+                        r_game_ctr <= to_unsigned(1, r_game_ctr'length);
 
+                    else
+                        -- this logic handles right-to-left LED cycle behavior
+                        if r_game_ctr = to_unsigned(30000000, r_game_ctr'length) then   -- on a 100MHz clock, it takes 300ms to count up to this value
+                            r_game_ctr <= (others => '0');
+                            r_cycle_vectorRL <= r_cycle_vectorRL(14 downto 0) & r_cycle_vectorRL(15); -- this gives a left shift with wraparound behavior
+                        else
+                            r_game_ctr <= r_game_ctr + 1;
                         end if;
                     end if;
-                    r_game_ctr <= r_game_ctr + 1;
 
                 when INCR_SCORE =>
                     -- in this state, we want to increment the player score and either transition to WIN or TARGET_OFF for loading next round. 
@@ -164,9 +176,13 @@ process (i_clk) begin
                     -- In this state, I want the score counter to decrement (once per r_game_ctr) cycle until 0 is reached, at which point we transition back to START
                     if r_score = 0 then 
                         r_curr_state <= START;
+                        r_game_ctr <= (others => '0');
                     else
                         if r_game_ctr = to_unsigned(30000000, r_game_ctr'length)    -- decrements counter by 1 every 300ms
                             r_score <= r_score - 1;
+                            r_game_ctr <= (others => '0');
+                        else 
+                            r_game_ctr <= r_game_ctr + 1;
                         end if;
                     end if;
                     r_game_ctr <= r_game_ctr + 1;
@@ -176,7 +192,10 @@ process (i_clk) begin
                     if r_game_ctr = to_unsigned(10000000, r_game_ctr'length) then
                         -- LEDs will cycle in a fun pattern until reset is asserted
                         r_cycle_vectorRL <= r_cycle_vectorRL(14 downto 0) & r_cycle_vectorRL(15);
-                        r_cycle_vectorLR <= r_cycle_vectorLR(0) & r_cycle_vectorLR(15 downto 1);    
+                        r_cycle_vectorLR <= r_cycle_vectorLR(0) & r_cycle_vectorLR(15 downto 1);   
+                        r_game_ctr <= (others => '0');
+                    else
+                        r_game_ctr <= r_game_ctr + 1;
                     end if;
                     r_curr_state <= WIN;
             end case;
@@ -187,7 +206,7 @@ end process
 
 
 o_target_LED <= r_target_LED_idx;
-o_LED_arr <= r_LED_arr or r_cycle_vectorRL or r_cycle_vector ;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that all required lights are on
-o_display_val <= r_score;       
+o_LED_arr <= r_LED_arr or r_cycle_vectorRL or r_cycle_vectorLR;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that all required lights are on
+o_display_val <= std_logic_vector(r_score);                       -- casting to std_logic_vector, since that is what the input to the Binary_to_7Segment module accepts       
 
 end architecture RTL;
