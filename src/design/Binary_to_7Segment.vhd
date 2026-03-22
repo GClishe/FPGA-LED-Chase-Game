@@ -69,12 +69,12 @@ begin
         end if; 
     end process;
 
-    o_Segment_A <= r_Hex_Encoding(6);
-    o_Segment_B <= r_Hex_Encoding(5);
-    o_Segment_C <= r_Hex_Encoding(4);
-    o_Segment_D <= r_Hex_Encoding(3);
-    o_Segment_E <= r_Hex_Encoding(2);
-    o_Segment_F <= r_Hex_Encoding(1);
-    o_Segment_G <= r_Hex_Encoding(0);
+    o_Segment_A <= not r_Hex_Encoding(6);
+    o_Segment_B <= not r_Hex_Encoding(5);
+    o_Segment_C <= not r_Hex_Encoding(4);
+    o_Segment_D <= not r_Hex_Encoding(3);
+    o_Segment_E <= not r_Hex_Encoding(2);
+    o_Segment_F <= not r_Hex_Encoding(1);
+    o_Segment_G <= not r_Hex_Encoding(0);
 
 end RTL;
