@@ -8,7 +8,6 @@ port (
     i_clk : in std_logic;
     i_btnT : in std_logic;                                          -- reset button
     i_btnC : in std_logic;                                          -- Main player input. Also transitions from START
-    o_target_LED: out unsigned(3 downto 0);                         -- idx of the target LED.
     o_LED_arr: out std_logic_vector(15 downto 0);                   -- array representing each LED. All 1's indicate corresponding LED should be on. 
     o_display_val: out std_logic_vector(3 downto 0)                 -- 4-bit code representing decimal value that we wish to show on the 7S display
 );
@@ -204,8 +203,6 @@ process (i_clk) begin
     end if;
 end process
 
-
-o_target_LED <= r_target_LED_idx;
 o_LED_arr <= r_LED_arr or r_cycle_vectorRL or r_cycle_vectorLR;   -- r_led_arr will have target LED illuminated, but we do bitwise OR with the cycle arr so that all required lights are on
 o_display_val <= std_logic_vector(r_score);                       -- casting to std_logic_vector, since that is what the input to the Binary_to_7Segment module accepts       
 
